@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Web Serial Distance Logger</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    .row { display:flex; flex-wrap: wrap; gap:8px; align-items:center; }
+    .row .spacer { flex: 1 1 auto; }
+    .panel { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+    .muted { color:#666; }
+    button { padding: 6px 10px; }
+    select { padding: 4px; }
+    #distList { margin: 8px 0 0; padding-left: 1.25rem; max-height: 300px; overflow: auto; }
+    #log { width:100%; height:120px; resize:vertical; }
+    .small { font-size: 12px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <div class="row">
+      <button id="btnConnect">Connect</button>
+      <button id="btnDisconnect" disabled>Disconnect</button>
+      <div class="spacer"></div>
+      <label>Baud:
+        <select id="baud">
+          <option>9600</option>
+          <option>19200</option>
+          <option>38400</option>
+          <option>57600</option>
+          <option selected>115200</option>
+        </select>
+      </label>
+      <label>Line end:
+        <select id="lineEnd">
+          <option value="lf">\n</option>
+          <option value="crlf" selected>\r\n</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <button id="btnStart" disabled>Start (1 Hz)</button>
+      <button id="btnStop" disabled>Stop</button>
+      <div class="spacer"></div>
+      <span id="status" class="muted">Status: Not connected.</span>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:12px;">
+    <div class="row" style="align-items: baseline;">
+      <h3 style="margin:0;">Distance (numeric lines only)</h3>
+      <div class="spacer"></div>
+      <span class="small muted">Startでリセット → 1秒ごとに更新</span>
+    </div>
+    <ol id="distList"></ol>
+  </div>
+
+  <details style="margin-top:12px;">
+    <summary>受信ログ（デバッグ用・任意）</summary>
+    <textarea id="log" readonly></textarea>
+  </details>
+
+  <p class="small muted" style="margin-top:8px;">
+    ※ Arduinoは、<strong>D</strong>（改行付き）を受信したとき、<strong>距離の数値だけ</strong>を1行で返すようにしてください（例: <code>123.4</code>）。
+  </p>
+</div>
+
+<script>
+(() => {
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const btnConnect = document.getElementById('btnConnect');
+  const btnDisconnect = document.getElementById('btnDisconnect');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const baudSel = document.getElementById('baud');
+  const lineEndSel = document.getElementById('lineEnd');
+  const distList = document.getElementById('distList');
+
+  let port = null;
+  let reader = null;
+  let keepReading = false;
+  let rxBuffer = "";
+  let timerId = null;
+  let running = false;
+
+  function ln(s) {
+    logEl.value += s + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function setStatus(s) { statusEl.textContent = "Status: " + s; }
+  function setUIConnected(yes) {
+    btnConnect.disabled = yes;
+    btnDisconnect.disabled = !yes;
+    baudSel.disabled = yes;
+    btnStart.disabled = !yes;
+    btnStop.disabled = !yes || !running;
+  }
+  function setUIRunning(yes) {
+    running = yes;
+    btnStart.disabled = !port || yes; // 走行中はStart不可
+    btnStop.disabled = !port || !yes; // 走行中のみStop可
+  }
+  function resetDistances() {
+    distList.innerHTML = "";
+  }
+  function addDistanceLine(val) {
+    const li = document.createElement('li');
+    li.textContent = val;
+    distList.appendChild(li);
+  }
+  function isNumericLine(line) {
+    // 数値行ならtrue（整数/小数/符号/指数を許容）
+    return /^[\s]*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[\s]*$/.test(line);
+  }
+
+  async function readLoop() {
+    const decoder = new TextDecoder();
+    try {
+      while (port && keepReading) {
+        const r = port.readable.getReader();
+        reader = r;
+        try {
+          while (true) {
+            const { value, done } = await r.read();
+            if (done) break;
+            if (value) {
+              const chunk = decoder.decode(value);
+              ln(chunk.replace(/\r/g, "\\r").replace(/\n/g, "\\n\n")); // ログ（可視化用）
+              rxBuffer += chunk;
+              // 行ごとに処理
+              let idx;
+              while ((idx = rxBuffer.search(/\r?\n/)) >= 0) {
+                const line = rxBuffer.slice(0, idx);
+                rxBuffer = rxBuffer.slice(idx + (rxBuffer[idx] === '\r' && rxBuffer[idx+1] === '\n' ? 2 : 1));
+                const trimmed = line.trim();
+                if (trimmed.length === 0) continue;
+                if (isNumericLine(trimmed)) {
+                  addDistanceLine(trimmed);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // 読み取り中断時など
+        } finally {
+          r.releaseLock();
+          if (!keepReading) break;
+        }
+      }
+    } catch (e) {
+      ln("[read error] " + e);
+    }
+  }
+
+  async function connect() {
+    if (!("serial" in navigator)) {
+      alert("このブラウザは Web Serial に対応していません。Chrome/Edge（デスクトップ）を使用してください。");
+      return;
+    }
+    try {
+      const baudRate = parseInt(baudSel.value, 10);
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate });
+      setUIConnected(true);
+      setStatus("Connected @ " + baudRate + " bps");
+      ln("[connected]");
+      keepReading = true;
+      readLoop();
+    } catch (e) {
+      ln("[connect error] " + e);
+      setStatus("Connect failed");
+    }
+  }
+
+  async function disconnect() {
+    try {
+      stopMeasuring(); // 切断時には必ず停止
+      keepReading = false;
+      if (reader) {
+        try { await reader.cancel(); } catch {}
+        reader = null;
+      }
+      if (port) {
+        try { await port.close(); } catch {}
+      }
+      port = null;
+      setUIConnected(false);
+      setStatus("Disconnected");
+      ln("[disconnected]");
+    } catch (e) {
+      ln("[disconnect error] " + e);
+    }
+  }
+
+  async function sendCommand(s) {
+    if (!port) return;
+    const enc = new TextEncoder();
+    const le = lineEndSel.value;
+    if (le === "lf") s += "\n";
+    else if (le === "crlf") s += "\r\n";
+    try {
+      const w = port.writable.getWriter();
+      await w.write(enc.encode(s));
+      w.releaseLock();
+    } catch (e) {
+      ln("[write error] " + e);
+    }
+  }
+
+  function startMeasuring() {
+    if (!port) return;
+    // 表示をリセット
+    resetDistances();
+    // 二重開始防止
+    if (timerId) clearInterval(timerId);
+    // 1秒おきに「D」を送信（Arduinoは距離の数値のみ1行で返す想定）
+    timerId = setInterval(() => sendCommand("D"), 1000);
+    setUIRunning(true);
+    setStatus("Measuring @ 1 Hz");
+  }
+
+  function stopMeasuring() {
+    if (timerId) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+    setUIRunning(false);
+    if (port) setStatus("Connected (stopped)");
+  }
+
+  // UIイベント
+  btnConnect.addEventListener('click', connect);
+  btnDisconnect.addEventListener('click', disconnect);
+  btnStart.addEventListener('click', startMeasuring);
+  btnStop.addEventListener('click', stopMeasuring);
+
+  // ポート抜去など
+  navigator.serial?.addEventListener('disconnect', (event) => {
+    if (port && event.target === port) {
+      disconnect();
+    }
+  });
+})();
+</script>
+</body>
+</html>
