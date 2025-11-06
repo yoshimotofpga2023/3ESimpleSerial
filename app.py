@@ -2,7 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from pathlib import Path
 
-st.set_page_config(page_title="Web Serial × Streamlit", layout="centered")
+st.set_page_config(page_title="3EUSMeasureApp", layout="centered")
 st.title("超音波センサー測定用シリアル通信ロガー")
 
 st.info(
