@@ -51,7 +51,7 @@ st.code(
 
       void loop() {
         if (Serial.available()) {
-          String cmd = Serial.readStringUntil('\n');
+          String cmd = Serial.readStringUntil('\\n');
           cmd.trim();
           if (cmd.equalsIgnoreCase("D")) {
             float d = readDistanceCmOnce();
