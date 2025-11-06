@@ -27,50 +27,40 @@ st.text("超音波測定用プログラム(Arduino IDE)")
 
 st.code(
     '''
-// HC-SR04 超音波距離センサー 測距→CSV行出力（ミリ秒, センチメートル）
-const int PIN_TRIG = 9;
-const int PIN_ECHO = 8;
+      // Trig/Echo ピンは環境に合わせて変更
+      const int PIN_TRIG = 9;
+      const int PIN_ECHO = 10;
 
-void setup() {
-  pinMode(PIN_TRIG, OUTPUT);
-  pinMode(PIN_ECHO, INPUT);
-  Serial.begin(115200);               // ←Octave側も同じボーレートに
-  Serial.println("millis,distance_cm"); // ヘッダ（最初の1行）
-  delay(100);
-}
+      void setup() {
+        Serial.begin(115200);
+        pinMode(PIN_TRIG, OUTPUT);
+        pinMode(PIN_ECHO, INPUT);
+      }
 
-float measureDistanceCm() {
-  // トリガパルス（10us）
-  digitalWrite(PIN_TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(PIN_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(PIN_TRIG, LOW);
+      float readDistanceCmOnce() {
+        digitalWrite(PIN_TRIG, LOW);
+        delayMicroseconds(2);
+        digitalWrite(PIN_TRIG, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(PIN_TRIG, LOW);
+        long duration = pulseIn(PIN_ECHO, HIGH, 30000UL); // タイムアウト30ms
+        if (duration == 0) return -1.0; // 取得失敗
+        float cm = duration * 0.0343 / 2.0;
+        return cm;
+      }
 
-  // ECHOパルス幅を測定（タイムアウト 30ms ≒ 約5m）
-  unsigned long duration = pulseIn(PIN_ECHO, HIGH, 30000UL);
+      void loop() {
+        if (Serial.available()) {
+          String cmd = Serial.readStringUntil('\n');
+          cmd.trim();
+          if (cmd.equalsIgnoreCase("D")) {
+            float d = readDistanceCmOnce();
+            if (d < 0) Serial.println("NaN");  // JS側は数値のみ拾うのでNaNは無視されます
+            else Serial.println(d, 1);         // 例: 123.4
+          }
+        }
+      }
 
-  if (duration == 0) {
-    // タイムアウト時は負値で通知（Octave側で無視可）
-    return -1.0f;
-  }
-
-  // 音速 ≈ 343 m/s → 0.0343 cm/us、往復のため /2
-  float distance_cm = (duration * 0.0343f) / 2.0f;
-  return distance_cm;
-}
-
-void loop() {
-  float d = measureDistanceCm();
-  unsigned long t = millis();
-
-  // CSV: millis,distance_cm
-  Serial.print(t);
-  Serial.print(",");
-  Serial.println(d, 2); // 小数2桁
-
-  delay(500); // 20Hzサンプリング（必要に応じて調整）
-}
     '''
 )
 
