@@ -73,3 +73,8 @@ void loop() {
 }
     '''
 )
+
+
+
+st.write("ブレッドボードへの実装例")
+st.image("./tinker_USImg01.png")
