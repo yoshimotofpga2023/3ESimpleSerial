@@ -1,0 +1,5 @@
+name: app_env
+channels:
+- snowflake
+dependencies:
+
