@@ -9,40 +9,13 @@
     .wrap { max-width: 760px; margin: 0 auto; }
     .row { display:flex; flex-wrap: wrap; gap:8px; align-items:center; }
     .row .spacer { flex: 1 1 auto; }
-    .panel { border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
+    .panel { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
     .muted { color:#666; }
     button { padding: 6px 10px; }
     select { padding: 4px; }
-    #distList { margin: 8px 0 0; padding-left: 1.5rem; max-height: 300px; overflow: auto; }
+    #distList { margin: 8px 0 0; padding-left: 1.25rem; max-height: 300px; overflow: auto; }
     #log { width:100%; height:120px; resize:vertical; }
     .small { font-size: 12px; }
-
-    /* ★ ChatGPT風のコピーラベル */
-    .copy-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid #ddd;
-      font-size: 12px;
-      color: #666;
-      cursor: pointer;
-      user-select: none;
-      white-space: nowrap;
-    }
-    .copy-pill svg {
-      width: 14px;
-      height: 14px;
-    }
-    .copy-pill:hover {
-      background-color: #f3f3f3;
-    }
-    .copy-pill.disabled {
-      opacity: 0.4;
-      cursor: default;
-      pointer-events: none;
-    }
   </style>
 </head>
 <body>
@@ -73,40 +46,27 @@
     <div class="row" style="margin-top:8px;">
       <button id="btnStart" disabled>Start</button>
       <button id="btnStop" disabled>Stop</button>
-      <button id="btnDownload" disabled>Download CSV</button>
       <div class="spacer"></div>
       <span id="status" class="muted">Status: Not connected.</span>
     </div>
   </div>
 
   <div class="panel" style="margin-top:12px;">
-    <div class="row" style="align-items: center;">
+    <div class="row" style="align-items: baseline;">
       <h3 style="margin:0;">Distance (numeric lines only)</h3>
       <div class="spacer"></div>
-      <!-- ★ ChatGPT風コピーUI -->
-      <div id="copyBadge" class="copy-pill disabled" title="パネルの内容をコピー">
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="3" y="4" width="9" height="9" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.2"></rect>
-          <rect x="6" y="3" width="7" height="7" rx="2" ry="2" fill="white" stroke="currentColor" stroke-width="1.2"></rect>
-        </svg>
-        <span>コードをコピーする</span>
-      </div>
-    </div>
-    <div class="small muted" style="margin-top:4px;">
-      Startでリセット → 1秒ごとに更新（距離＋タイムスタンプを記録）
+      <span class="small muted">Startでリセットされる．</span>
     </div>
     <ol id="distList"></ol>
   </div>
 
   <details style="margin-top:12px;">
-    <summary>受信ログ（デバッグ用・▼をクリックで展開）</summary>
+    <summary>受信ログ（左の▶をクリック．展開する）</summary>
     <textarea id="log" readonly></textarea>
   </details>
 
   <p class="small muted" style="margin-top:8px;">
-    ※ Arduinoは、<strong>D</strong>（改行付き）を受信したとき、<strong>距離の数値だけ</strong>を1行で返してください（例: <code>123.4</code>）。<br>
-    ※ Download CSV は、取得した距離一覧（index, datetime_iso, distance）を保存します。<br>
-    ※ 「コードをコピーする」は、このパネルに表示されている距離リストをまとめてコピーします。
+    ※ Arduinoは、<strong>D</strong>（改行付き）を受信したとき、<strong>距離の数値だけ</strong>を1行で返すようにしてください（例: <code>123.4</code>）。
   </p>
 </div>
 
@@ -118,8 +78,6 @@
   const btnDisconnect = document.getElementById('btnDisconnect');
   const btnStart = document.getElementById('btnStart');
   const btnStop = document.getElementById('btnStop');
-  const btnDownload = document.getElementById('btnDownload');
-  const copyBadge = document.getElementById('copyBadge');  // ★ 追加
   const baudSel = document.getElementById('baud');
   const lineEndSel = document.getElementById('lineEnd');
   const distList = document.getElementById('distList');
@@ -131,64 +89,31 @@
   let timerId = null;
   let running = false;
 
-  // 計測データ: { t: ISO文字列, d: 数値 }
-  let records = [];
-
   function ln(s) {
     logEl.value += s + "\n";
     logEl.scrollTop = logEl.scrollHeight;
   }
   function setStatus(s) { statusEl.textContent = "Status: " + s; }
-
   function setUIConnected(yes) {
     btnConnect.disabled = yes;
     btnDisconnect.disabled = !yes;
     baudSel.disabled = yes;
-    btnStart.disabled = !yes;     // 接続中ならStart可能
+    btnStart.disabled = !yes;
     btnStop.disabled = !yes || !running;
-    refreshDataButtons();
   }
-
   function setUIRunning(yes) {
     running = yes;
-    btnStart.disabled = !port || yes; // 実行中はStart不可
-    btnStop.disabled = !port || !yes; // 実行中のみStop可
-    refreshDataButtons();
+    btnStart.disabled = !port || yes; // 走行中はStart不可
+    btnStop.disabled = !port || !yes; // 走行中のみStop可
   }
-
-  // Download と Copy（バッジ）の有効/無効をまとめて制御
-  function refreshDataButtons() {
-    const hasData = records.length > 0;
-    btnDownload.disabled = !hasData;
-
-    if (hasData) {
-      copyBadge.classList.remove('disabled');
-    } else {
-      copyBadge.classList.add('disabled');
-    }
-  }
-
   function resetDistances() {
     distList.innerHTML = "";
-    records = [];
-    refreshDataButtons();
   }
-
   function addDistanceLine(val) {
-    const now = new Date();
-    const iso = now.toISOString();
-    const num = parseFloat(val);
-    // 配列へ格納
-    records.push({ t: iso, d: num });
-    refreshDataButtons();
-
     const li = document.createElement('li');
-    // 表示形式：  <距離>.  (ISO)
-    // li.textContent = `  ${num}.  (${iso})`;
-    li.textContent = `  ${num}`;
+    li.textContent = val;
     distList.appendChild(li);
   }
-
   function isNumericLine(line) {
     // 数値行ならtrue（整数/小数/符号/指数を許容）
     return /^[\s]*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[\s]*$/.test(line);
@@ -206,7 +131,7 @@
             if (done) break;
             if (value) {
               const chunk = decoder.decode(value);
-              ln(chunk.replace(/\r/g, "\\r").replace(/\n/g, "\\n\n"));
+              ln(chunk.replace(/\r/g, "\\r").replace(/\n/g, "\\n\n")); // ログ（可視化用）
               rxBuffer += chunk;
               // 行ごとに処理
               let idx;
@@ -290,11 +215,14 @@
 
   function startMeasuring() {
     if (!port) return;
-    resetDistances();       // 表示・記録をリセット
+    // 表示をリセット
+    resetDistances();
+    // 二重開始防止
     if (timerId) clearInterval(timerId);
-    timerId = setInterval(() => sendCommand("D"), 500); // 0.5秒ごと
+    // 1秒おきに「D」を送信（Arduinoは距離の数値のみ1行で返す想定）
+    timerId = setInterval(() => sendCommand("D"), 1000);
     setUIRunning(true);
-    setStatus("Measuring");
+    setStatus("Measuring @ 1 Hz");
   }
 
   function stopMeasuring() {
@@ -306,68 +234,13 @@
     if (port) setStatus("Connected (stopped)");
   }
 
-  function downloadCSV() {
-    if (!records.length) return;
-    // let csv = "index,datetime_iso,distance\n";
-    let csv = "";
-    records.forEach((r, i) => {
-      // カンマや改行が紛れないように最小限のフォーマット
-      csv += `${i + 1},${r.d}\n`;
-      // csv += `${i + 1},${r.t},${r.d}\n`;
-    });
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    a.href = url;
-    a.download = `distance_${ts}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  // ★ パネルの内容（#distList 内の li）をまとめてコピー
-  async function copyPanel() {
-    const items = Array.from(distList.querySelectorAll('li'));
-    if (!items.length) return;
-
-    const text = items.map(li => li.textContent.trim()).join("\n");
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        setStatus("Copied panel text to clipboard");
-        return;
-      } catch (e) {
-        console.warn("navigator.clipboard failed, fallback to execCommand.", e);
-      }
-    }
-
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try {
-      const ok = document.execCommand("copy");
-      setStatus(ok ? "Copied panel text to clipboard" : "Copy failed");
-    } catch (err) {
-      alert("コピーに失敗しました: " + err);
-    }
-    document.body.removeChild(ta);
-  }
-
   // UIイベント
   btnConnect.addEventListener('click', connect);
   btnDisconnect.addEventListener('click', disconnect);
   btnStart.addEventListener('click', startMeasuring);
   btnStop.addEventListener('click', stopMeasuring);
-  btnDownload.addEventListener('click', downloadCSV);
-  copyBadge.addEventListener('click', copyPanel);   // ★ バッジクリックでコピー
 
+  // ポート抜去など
   navigator.serial?.addEventListener('disconnect', (event) => {
     if (port && event.target === port) {
       disconnect();

@@ -7,6 +7,7 @@ st.title("超音波センサー測定用シリアル通信ロガー")
 
 st.info(
     "使い方: Chrome/Edge（デスクトップ）で開き、**Connect** を押してポートを選択 → 入力欄から送信。"
+    "Connectが成功したら、Startボタンで通信開始．測定が終わったらStopボタンを押す．"
     "Web Serial は `https://` または `http://localhost` でのみ有効です。"
 )
 
