@@ -29,11 +29,69 @@ updated : 2025/11/13
 
 - Web Serial APIをJavaScriptで呼び出し．
 - [connect]ボタンで、指定されたボーレートでarduinoとシリアル通信を開始する．
+    - 非同期処理(await)でarduinoと接続を試みる．接続に成功すればシリアル通信を始める．
+    - データの取得は readLoop関数で定義している．
+    ```
+      async function readLoop() {
+    const decoder = new TextDecoder();
+    try {
+      while (port && keepReading) {
+        const r = port.readable.getReader();
+        reader = r;
+        try {
+          while (true) {
+            const { value, done } = await r.read();
+            if (done) break;
+            if (value) {
+              const chunk = decoder.decode(value);
+              ln(chunk.replace(/\r/g, "\\r").replace(/\n/g, "\\n\n"));
+              rxBuffer += chunk;
+              // 行ごとに処理
+              let idx;
+              while ((idx = rxBuffer.search(/\r?\n/)) >= 0) {
+                const line = rxBuffer.slice(0, idx);
+                rxBuffer = rxBuffer.slice(idx + (rxBuffer[idx] === '\r' && rxBuffer[idx+1] === '\n' ? 2 : 1));
+                const trimmed = line.trim();
+                if (trimmed.length === 0) continue;
+                if (isNumericLine(trimmed)) {
+                  addDistanceLine(trimmed);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // 読み取り中断時など
+        } finally {
+          r.releaseLock();
+          if (!keepReading) break;
+        }
+      }
+    } catch (e) {
+      ln("[read error] " + e);
+    }
+  }
+    ```
+    関数のポイントは、改行文字ごとにシリアル通信のデータを読み取る処理をしている．
+    たとえば、123.4\r\nときたら、123.4のみをrxBufferという変数に格納する．
+
+    最終的に,addDistanceという関数で、データの取得時間と取得した距離データをrecords配列へpushする．
+    表示は、距離のみ表示する．
+
+    - 以下の正規表現で取得したデータから数値のみを取得する．
+
+    ```
+    /^[\s]*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[\s]*$/
+    ```
+    上記関数内、isNumericLine関数で処理している．
+
 - [Start]ボタンで、arduinoからシリアル通信で送信されてくるデータを取得する．
     - 前回計測したデータがあればリセットされる．
-    - 
+    - 500ms間隔でarduinoに文字列"D"をシリアル通信で送信している．
+        - この仕様に対応したarduinoのプログラムであれば、Dを受け取った場合のみシリアル通信で測定データを送信するというロジックを作成できる．
+
 
 - [Stop]ボタンで、計測を終了する．まだ、arduinoとはシリアル通信を継続している．
+    - Interval割り込みの停止と、その関数で保持されるtimerIDオブジェクトをメモリ領域から解放する．
 
 - [Disconnect]ボタンでarduinoとのシリアル接続を切断する．
 
