@@ -67,7 +67,7 @@ st.code(
 )
 
 
-st.write("ブレッドボードへの実装例")
+st.write("ブレッドボードへの実装例①")
 st.image("./tinker_USImg01.png")
 
 st.write("### ボタン(GPIO ポート2)押下で超音波測定")
@@ -214,7 +214,7 @@ void loop() {
     '''
 )
 
-st.write("ブレッドボードへの実装例①")
+st.write("ブレッドボードへの実装例②")
 st.image("./tinker_USImg02.png")
 
 st.write("### ボタン(GPIO ポート2)押下で可変抵抗器の電圧（抵抗）測定")
