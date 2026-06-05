@@ -213,3 +213,212 @@ void loop() {
 }
     '''
 )
+
+st.write("ブレッドボードへの実装例①")
+st.image("./tinker_USImg02.png")
+
+st.write("### ボタン(GPIO ポート2)押下で可変抵抗器の電圧（抵抗）測定")
+
+st.code(
+    '''
+// ===== A0 Voltage + Button Send =====
+
+const int PIN_ANALOG = A0;
+
+// ボタン（GNDへ落とす、内部プルアップ）
+const int PIN_BTN = 2;
+
+// ADC基準電圧
+const float VREF = 5.0;
+
+// チャタリング対策
+const unsigned long DEBOUNCE_MS = 30;
+bool lastStableBtn = HIGH;
+bool lastReading   = HIGH;
+unsigned long lastChangeMs = 0;
+
+// 押しっぱなし対策
+bool pressLatched = false;
+
+// 送信間隔
+const unsigned long MIN_SEND_INTERVAL_MS = 50;
+unsigned long lastSendMs = 0;
+
+float readVoltageOnce() {
+  int adc = analogRead(PIN_ANALOG);
+  float voltage = adc * VREF / 1023.0;
+  return voltage;
+}
+
+void sendVoltageOnce() {
+  unsigned long now = millis();
+  if (now - lastSendMs < MIN_SEND_INTERVAL_MS) return;
+  lastSendMs = now;
+
+  float v = readVoltageOnce();
+
+  // 電圧値のみ送信
+  Serial.println(v, 3);
+}
+
+// ボタンのデバウンス＋押下イベント生成
+bool buttonPressedEvent() {
+  bool reading = digitalRead(PIN_BTN);
+
+  if (reading != lastReading) {
+    lastChangeMs = millis();
+    lastReading = reading;
+  }
+
+  if (millis() - lastChangeMs > DEBOUNCE_MS) {
+    if (reading != lastStableBtn) {
+      lastStableBtn = reading;
+
+      // HIGH → LOW が押下イベント
+      if (lastStableBtn == LOW) return true;
+    }
+  }
+
+  return false;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(PIN_ANALOG, INPUT);
+  pinMode(PIN_BTN, INPUT_PULLUP);
+}
+
+void loop() {
+  if (buttonPressedEvent()) {
+    if (!pressLatched) {
+      pressLatched = true;
+      sendVoltageOnce();
+    }
+  } else {
+    // ボタンを離したら次の押下を許可
+    if (lastStableBtn == HIGH) {
+      pressLatched = false;
+    }
+  }
+}
+    '''
+)
+
+st.write("ブレッドボードへの実装例")
+st.image("./tinker_potentionMeterFig01.png")
+
+st.write("### 自動で26点のcds光センサーの抵抗値測定")
+
+st.code(
+    '''
+const int ledPin = 9;
+const int cdsPin = A0;
+const int buttonPin = 2;
+
+const float fixedResistor = 10000.0;
+
+const float gammaValue = 0.6;
+const float r10Typ = 30000.0;
+
+// チャタリング対策
+const unsigned long DEBOUNCE_MS = 30;
+bool lastStableBtn = HIGH;
+bool lastReading = HIGH;
+unsigned long lastChangeMs = 0;
+
+bool pressLatched = false;
+
+// PWM値
+int pwmValue = 0;
+
+float estimateLux(float resistance, float r10) {
+  if (resistance <= 0.0) return -1.0;
+  return 10.0 * pow(r10 / resistance, 1.0 / gammaValue);
+}
+
+bool buttonPressedEvent() {
+  bool reading = digitalRead(buttonPin);
+
+  if (reading != lastReading) {
+    lastChangeMs = millis();
+    lastReading = reading;
+  }
+
+  if (millis() - lastChangeMs > DEBOUNCE_MS) {
+    if (reading != lastStableBtn) {
+      lastStableBtn = reading;
+
+      if (lastStableBtn == LOW) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+float readLuxOnce() {
+  analogWrite(ledPin, pwmValue);
+  delay(1000);
+  int sensorValue = analogRead(cdsPin);
+  float voltage = sensorValue * (5.0 / 1023.0);
+
+  float cdsResistance = -1.0;
+
+  if (voltage > 0.01 && voltage < 4.99) {
+    cdsResistance = fixedResistor * (5.0 - voltage) / voltage; 
+  // 回路: 5V - CdS - A0 - 10kΩ - GND
+//    cdsResistance = fixedResistor * voltage / (5.0 - voltage); 
+  // 回路: 5V - 10kΩ - A0 - CdS - GND
+  }
+  if (cdsResistance <= 0.0) {
+    return -1.0;
+  }
+  return estimateLux(cdsResistance, r10Typ);
+}
+
+void sendLuxOnce() {
+  float lux = readLuxOnce();
+
+  if (lux > 0.0) {
+    Serial.println(lux, 2);
+  } else {
+    Serial.println("NaN");
+  }
+}
+
+void setup() {
+  pinMode(ledPin, OUTPUT);
+  pinMode(cdsPin, INPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  Serial.begin(115200);
+
+  analogWrite(ledPin, pwmValue);
+}
+
+void loop() {
+  if (buttonPressedEvent()) {
+    if (!pressLatched) {
+      pressLatched = true;
+
+      sendLuxOnce();
+
+      pwmValue += 10;
+
+      if (pwmValue > 255) {
+        pwmValue = 0;
+      }
+    }
+  } else {
+    if (lastStableBtn == HIGH) {
+      pressLatched = false;
+    }
+  }
+}q
+    '''
+)
+
+st.write("ブレッドボードでの実体配線図（すでに組み立て済み）")
+st.image("./tinker_cdsMeasureFig01.png")
