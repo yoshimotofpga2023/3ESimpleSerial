@@ -416,7 +416,7 @@ void loop() {
       pressLatched = false;
     }
   }
-}q
+}
     '''
 )
 
