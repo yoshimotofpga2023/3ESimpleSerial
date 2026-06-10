@@ -25,6 +25,7 @@ else:
 st.write("### Arduinoプログラム(超音波センサー専用)"
          " "
          "Arduino IDEを起動して以下のプログラムをコピペ。Arduinoに書き込むこと。"
+         "Arduinoとブレッドボードの接続におけるピン配置は、プログラムやArduinoにて適宜調整すること。"
          )
 
 st.code(
