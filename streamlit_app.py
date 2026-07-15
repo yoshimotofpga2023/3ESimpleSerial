@@ -422,3 +422,4 @@ void loop() {
 
 st.write("ブレッドボードでの実体配線図（すでに組み立て済み）")
 st.image("./tinker_cdsMeasureFig01.png")
+st.image("./cdsMeasureFigure01.pdf")

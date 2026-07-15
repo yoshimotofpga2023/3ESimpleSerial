@@ -70,6 +70,7 @@ st.code(
 
 st.write("ブレッドボードへの実装例①")
 st.image("./tinker_USImg01.png")
+st.image("./USMeasure01.png")
 
 st.write("### ボタン(GPIO ポート2)押下で超音波測定")
 
@@ -217,6 +218,7 @@ void loop() {
 
 st.write("ブレッドボードへの実装例②")
 st.image("./tinker_USImg02.png")
+st.image("./USMeasure02.png")
 
 st.write("### ボタン(GPIO ポート2)押下で可変抵抗器の電圧（抵抗）測定")
 
@@ -308,6 +310,8 @@ void loop() {
 
 st.write("ブレッドボードへの実装例")
 st.image("./tinker_potentionMeterFig01.png")
+st.image("./04_chap04p123_01.png")
+
 
 st.write("### 自動で26点のcds光センサーの抵抗値測定")
 
@@ -423,3 +427,4 @@ void loop() {
 
 st.write("ブレッドボードでの実体配線図（すでに組み立て済み）")
 st.image("./tinker_cdsMeasureFig01.png")
+st.image("./cdsMeasureFigure01.png")
